@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>PMTiles 도로 경사 시각화</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/pmtiles@3.0.0/dist/index.js"></script>
+  <script src="https://unpkg.com/@maplibre/pmtiles@3.0.0/dist/index.js"></script>
+  
+  <style>
+    :root {
+      --accent: #0066ff;
+      --bg-light: #fafafa;
+      --shadow: 0 2px 8px rgba(0,0,0,.15);
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: "Pretendard", sans-serif;
+      background: var(--bg-light);
+    }
+    header {
+      display: flex; align-items: center; gap: .8rem;
+      padding: .8rem 1.2rem; background: #fff; box-shadow: var(--shadow); z-index: 2;
+    }
+    header h1 { margin: 0; font-size: 1.15rem; font-weight: 600; color: #333; }
+    #regionSelect, .modeOption {
+      padding: .45rem .75rem; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 1rem; cursor: pointer;
+    }
+    #container {
+      height: calc(100vh - 72px);
+      display: flex; flex-direction: column;
+    }
+    #map {
+      flex: 1;
+      height: 100%;
+    }
+    #infoBox {
+      min-height: 90px; padding: 1rem 1.2rem; background: #fff;
+      border-top: 1px solid #e0e0e0; display: flex; align-items: center;
+      gap: 1rem; font-size: 1.05rem; color: #333; box-shadow: var(--shadow);
+    }
+    #infoBox .title { font-weight: 700; color: var(--accent); font-size: 1.15rem; }
+    #legend {
+      position: absolute; bottom: 110px; right: 20px;
+      padding: .6rem .9rem; background: #fff; border-radius: 6px;
+      font-size: .94rem; line-height: 1.5; box-shadow: var(--shadow);
+    }
+    #legend .swatch {
+      display: inline-block; width: 22px; height: 10px; margin-right: 6px; border-radius: 2px;
+      vertical-align: middle;
+    }
+  </style>
+  
+
+</head>
+<body>
+    <header>
+      <h1>도로 경사 시각화</h1>
+      <label><input type="radio" name="mode" value="drive" checked> Drive</label>
+      <label><input type="radio" name="mode" value="walk"> Walk</label>
+      <select id="regionSelect">
+        <option value="서울특별시_edges">서울특별시</option>
+        <option value="대전광역시_edges">대전광역시</option>
+        <option value="부산광역시_edges">부산광역시</option>
+        <option value="경기도_edges">경기도</option>
+        <option value="강원특별자치도_edges">강원도</option>
+        <option value="충청북도_edges">충청북도</option>
+        <option value="충청남도_edges">충청남도</option>
+        <option value="전라북도_edges">전라북도</option>
+        <option value="전라남도_edges">전라남도</option>
+        <option value="경상북도_edges">경상북도</option>
+        <option value="경상남도_edges">경상남도</option>
+        <option value="제주특별자치도_edges">제주특별자치도</option>
+        <option value="인천광역시_edges">인천광역시</option>
+        <option value="대구광역시_edges">대구광역시</option>
+        <option value="광주광역시_edges">광주광역시</option>
+        <option value="울산광역시_edges">울산광역시</option>
+        <option value="세종특별자치시_edges">세종특별자치시</option>
+      </select>
+    </header>
+  
+    <div id="container">
+      <div id="map"></div>
+      <div id="infoBox">📌 간선을 클릭하면 상세 정보가 표시됩니다.</div>
+    </div>
+  
+    <div id="legend">
+      <span class="swatch" style="background:#cfe3ff"></span> ≤0 %<br>
+      <span class="swatch" style="background:#50b2ff"></span> 3 %<br>
+      <span class="swatch" style="background:#ffce00"></span> 6 %<br>
+      <span class="swatch" style="background:#ff8b00"></span> 9 %<br>
+      <span class="swatch" style="background:#e50000"></span> ≥12 %
+    </div>
+  </body>
+  
+  <script>
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol("pmtiles", protocol.tile);
+  
+    const map = new maplibregl.Map({
+      container: "map",
+      style: "https://tiles.basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+      center: [127.3845, 36.3504],
+      zoom: 12
+    });
+  
+    const REGIONS = {
+      "서울특별시_edges": { center: [126.9780, 37.5665], zoom: 12 },
+      "대전광역시_edges": { center: [127.3845, 36.3504], zoom: 12 },
+      "부산광역시_edges": { center: [129.0756, 35.1796], zoom: 12 },
+      "경기도_edges": { center: [127.2899, 37.4138], zoom: 10 },
+      "강원특별자치도_edges": { center: [127.7669, 37.8228], zoom: 10 },
+      "충청북도_edges": { center: [127.4895, 36.6359], zoom: 10 },
+      "충청남도_edges": { center: [126.9922, 36.6359], zoom: 10 },
+      "전라북도_edges": { center: [126.8504, 35.7153], zoom: 10 },
+      "전라남도_edges": { center: [126.8504, 34.8144], zoom: 10 },
+      "경상북도_edges": { center: [128.5912, 36.4919], zoom: 10 },
+      "경상남도_edges": { center: [128.6014, 35.2325], zoom: 10 },
+      "제주특별자치도_edges": { center: [126.5628, 33.4996], zoom: 10 },
+      "인천광역시_edges": { center: [126.7052, 37.4563], zoom: 12 },
+      "대구광역시_edges": { center: [128.6014, 35.8714], zoom: 12 },
+      "광주광역시_edges": { center: [126.8514, 35.1595], zoom: 12 },
+      "울산광역시_edges": { center: [129.3114, 35.5384], zoom: 12 },
+      "세종특별자치시_edges": { center: [127.2899, 36.4802], zoom: 12 }
+    };
+  
+    let currentMarker = null;
+    let hoveredFeatureId = null;
+  
+    async function loadLayer() {
+      const mode = document.querySelector('input[name="mode"]:checked').value;
+      const regionKey = document.getElementById('regionSelect').value;
+      const region = REGIONS[regionKey];
+      const url = `pmtiles://./static/${mode}/${regionKey}.pmtiles`;
+  
+      map.jumpTo({ center: region.center, zoom: region.zoom });
+  
+      // 기존 소스·레이어 제거
+      if (map.getSource('slope')) {
+        map.removeLayer('slope-layer');
+        map.removeLayer('slope-highlight');
+        map.removeSource('slope');
+      }
+  
+      map.addSource("slope", {
+        type: "vector",
+        url: url
+      });
+  
+      // 기본 레이어
+      map.addLayer({
+        id: "slope-layer",
+        type: "line",
+        source: "slope",
+        "source-layer": regionKey,
+        paint: {
+          "line-width": 1.5,
+          "line-color": [
+            "interpolate", ["linear"],
+            ["abs", ["to-number", ["coalesce", ["get", "slope"], 0]]],
+            0, "#cfe3ff", 3, "#50b2ff", 6, "#ffce00", 9, "#ff8b00", 12, "#e50000"
+          ]
+        }
+      });
+  
+      // Hover 강조 레이어
+      map.addLayer({
+        id: "slope-highlight",
+        type: "line",
+        source: "slope",
+        "source-layer": regionKey,
+        filter: ["==", "id", ""],
+        paint: {
+          "line-width": 4,
+          "line-color": "#222",
+          "line-opacity": 0.6
+        }
+      });
+  
+      attachEdgeEvents();
+    }
+  
+    function attachEdgeEvents() {
+      const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+  
+      map.on('mousemove', 'slope-layer', (e) => {
+        if (!e.features.length) {
+          popup.remove();
+          map.setFilter('slope-highlight', ['==', 'id', '']);
+          return;
+        }
+        const feature = e.features[0];
+        const { name, slope } = feature.properties;
+        const id = feature.id;
+        if (typeof id !== "undefined") {
+          map.setFilter('slope-highlight', ['==', 'id', id]);
+        }
+  
+        popup.setLngLat(e.lngLat)
+          .setHTML(`<strong>${name || '이름없음'}</strong><br/>경사도: ${Math.abs(+slope).toFixed(2)}%`)
+          .addTo(map);
+      });
+  
+      map.on('mouseleave', 'slope-layer', () => {
+        map.setFilter('slope-highlight', ['==', 'id', '']);
+        popup.remove();
+      });
+  
+      map.on('click', 'slope-layer', (e) => {
+        const props = e.features[0].properties;
+        const { lng, lat } = e.lngLat;
+  
+        if (currentMarker) currentMarker.remove();
+        currentMarker = new maplibregl.Marker({ color: '#ff3333' })
+          .setLngLat([lng, lat])
+          .addTo(map);
+  
+        document.getElementById('infoBox').innerHTML =
+          `<span class="title">${props.name || '이름없음'}</span> | 경사도 <strong>${Math.abs(+props.slope).toFixed(2)} %</strong>`;
+      });
+    }
+  
+    map.on("load", () => {
+      loadLayer();
+      document.getElementById('regionSelect').addEventListener('change', loadLayer);
+      document.querySelectorAll('input[name="mode"]').forEach(input =>
+        input.addEventListener('change', loadLayer)
+      );
+    });
+  </script>
+  
+  
+</body>
+</html>
